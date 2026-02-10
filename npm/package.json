@@ -6,12 +6,16 @@
     "magnet": "bin/magnet.js"
   },
   "scripts": {
-    "postinstall": "node bin/download.js"
+    "postinstall": "node bin/download.js",
+    "download": "node bin/download.js"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/toolkit-ai/magnet-cli.git"
   },
-  "keywords": ["magnet", "cli"],
+  "keywords": [
+    "magnet",
+    "cli"
+  ],
   "license": "MIT"
 }
