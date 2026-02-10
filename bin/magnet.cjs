@@ -8,7 +8,7 @@ const binary = path.join(binDir, process.platform === 'win32' ? 'magnet.exe' : '
 
 if (!fs.existsSync(binary)) {
   console.info('magnet: Downloading binary...');
-  const download = spawnSync(process.execPath, [path.join(__dirname, 'download.js')], {
+  const download = spawnSync(process.execPath, [path.join(__dirname, 'download.cjs')], {
     stdio: 'inherit',
     cwd: path.join(__dirname, '..'),
   });

@@ -1,0 +1,28 @@
+{
+  "name": "@magnet-ai/cli",
+  "version": "0.1.4",
+  "description": "Magnet CLI — issues, pages, and search. Download the native binary from GitHub Releases.",
+  "type": "module",
+  "bin": {
+    "magnet": "bin/magnet.cjs"
+  },
+  "scripts": {
+    "build": "bun build src/cli.ts --compile --outfile magnet",
+    "test": "bun test",
+    "test-smoke": "bun test && bun run build && sh scripts/smoke.sh",
+    "clean": "rm -f magnet magnet.exe",
+    "start": "bun run src/cli.ts",
+    "download": "node bin/download.cjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/toolkit-ai/magnet-cli.git"
+  },
+  "keywords": ["magnet", "cli"],
+  "license": "MIT",
+  "files": ["bin"],
+  "devDependencies": {
+    "@types/bun": "latest",
+    "commander": "^12.1.0"
+  }
+}

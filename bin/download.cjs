@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 /**
- * Postinstall: download the magnet binary from GitHub Releases for this OS/arch.
- * Requires no Node at runtime; the bin/magnet.js wrapper runs the downloaded binary.
+ * Download the magnet binary from GitHub Releases for this OS/arch.
+ * The bin/magnet.cjs wrapper runs the downloaded binary.
  */
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { execSync } = require('child_process');
 
-// Use repo from package.json so it works when published from any org (e.g. toolkit-ai/magnet-cli)
 function getRepo() {
   try {
     const pkg = require(path.join(__dirname, '..', 'package.json'));
@@ -35,8 +34,8 @@ function getPlatform() {
   return null;
 }
 
-const FETCH_TIMEOUT_MS = 60000;   // 60s for API / metadata
-const DOWNLOAD_TIMEOUT_MS = 120000; // 120s for the binary tarball
+const FETCH_TIMEOUT_MS = 60000;
+const DOWNLOAD_TIMEOUT_MS = 120000;
 
 function fetch(url, redirects = 0, timeoutMs = FETCH_TIMEOUT_MS) {
   if (redirects > 5) return Promise.reject(new Error('Too many redirects'));

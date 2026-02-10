@@ -1,7 +1,7 @@
 /magnet
 magnet.exe
+bin/magnet
+bin/magnet.exe
 *.tar.gz
 *.zip
-npm/bin/magnet
-npm/bin/magnet.exe
 node_modules/
