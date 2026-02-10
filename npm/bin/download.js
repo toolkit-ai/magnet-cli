@@ -47,7 +47,7 @@ async function getLatestTag() {
 async function main() {
   const platform = getPlatform();
   if (!platform) {
-    console.warn('@magnet/cli: No prebuilt binary for ' + process.platform + '/' + process.arch + '. Install from GitHub Releases.');
+    console.warn('@magnet-ai/cli: No prebuilt binary for ' + process.platform + '/' + process.arch + '. Install from GitHub Releases.');
     return;
   }
   const tag = VERSION === 'latest' ? await getLatestTag() : VERSION;
@@ -76,10 +76,10 @@ async function main() {
     }
     fs.chmodSync(destPath, 0o755);
   } catch (e) {
-    console.warn('@magnet/cli: Could not download binary:', e.message);
+    console.warn('@magnet-ai/cli: Could not download binary:', e.message);
   }
 }
 
 main().catch((e) => {
-  console.warn('@magnet/cli postinstall:', e.message);
+  console.warn('@magnet-ai/cli postinstall:', e.message);
 });

@@ -48,7 +48,7 @@ tar -xzf magnet-cli.tar.gz
 If you have Node.js and npm, you can install the wrapper package. It downloads the correct binary from GitHub Releases at install time; you do **not** need Node to run the CLI afterward.
 
 ```bash
-npm install -g @magnet/cli
+npm install -g @magnet-ai/cli
 ```
 
 Then run `magnet` as usual.
