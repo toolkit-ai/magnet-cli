@@ -12,6 +12,9 @@ func SetBaseURLForTest(u string) { os.Setenv("MAGNET_API_URL", u) }
 
 const defaultBaseURL = "https://www.magnet.run"
 
+// DefaultListLimit is used when --cursor is set but --limit is not (API needs a consistent page size for cursor).
+const DefaultListLimit = 50
+
 // UUID v4 regex (RFC 4122): xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx where y is 8, 9, a, or b
 var apiKeyRegex = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 

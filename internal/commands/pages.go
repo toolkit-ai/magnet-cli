@@ -33,8 +33,12 @@ func newPagesListCmd() *cobra.Command {
 			if search != "" {
 				params.Set("search", search)
 			}
-			if limit > 0 {
-				params.Set("limit", fmt.Sprintf("%d", limit))
+			pageSize := limit
+			if cursor != "" && pageSize <= 0 {
+				pageSize = internal.DefaultListLimit
+			}
+			if pageSize > 0 {
+				params.Set("limit", fmt.Sprintf("%d", pageSize))
 			}
 			if cursor != "" {
 				params.Set("cursor", cursor)
@@ -47,8 +51,8 @@ func newPagesListCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&search, "search", "", "Search query")
-	cmd.Flags().IntVar(&limit, "limit", 0, "Max number of pages (default from API)")
-	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
+	cmd.Flags().IntVar(&limit, "limit", 0, "Page size (default from API). Use with --cursor for pagination.")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor (use pagination.nextCursor from previous response)")
 	return cmd
 }
 

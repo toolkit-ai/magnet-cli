@@ -61,7 +61,7 @@ If we publish a Homebrew tap:
 brew install magnet-run/tap/magnet-cli
 ```
 
-*(Add this section once the tap is set up.)*
+_(Add this section once the tap is set up.)_
 
 ### 4. Build from source
 
@@ -79,7 +79,7 @@ go build -o magnet .
 ### Issues
 
 - **List**: `magnet issues list [--search q] [--limit n] [--cursor c]`  
-  GET /api/issues
+  GET /api/issues. Pagination: use `--limit` for page size and `--cursor` with the `pagination.nextCursor` value from the previous response.
 
 - **Get**: `magnet issues get <id>`  
   GET /api/issues/:id
@@ -90,7 +90,7 @@ go build -o magnet .
 ### Pages
 
 - **List**: `magnet pages list [--search q] [--limit n] [--cursor c]`  
-  GET /api/pages
+  GET /api/pages. Pagination: use `--limit` and `--cursor` (from `pagination.nextCursor`) for the next page.
 
 - **Get**: `magnet pages get <id>`  
   GET /api/pages/:id
@@ -107,12 +107,101 @@ go build -o magnet .
 
 All commands print JSON to stdout. Errors go to stderr and the process exits with a non-zero code.
 
+**Pagination (issues list / pages list):** The response includes `pagination: { total, hasMore, nextCursor }`. To fetch the next page, set `--cursor` to `pagination.nextCursor`. Use the same `--limit` as the first request (or omit it: when you pass `--cursor` without `--limit`, the CLI uses a default page size of 50 so the cursor works). Example:
+
+```bash
+magnet issues list --limit 20                    # first page
+magnet issues list --limit 20 --cursor "abc123"  # next page (use nextCursor from above)
+# or omit limit when using cursor (default 50 is sent):
+magnet issues list --cursor "abc123"
+```
+
 ## Development
 
 ```bash
 go build -o magnet .
 go test ./...
 ```
+
+## Testing
+
+### 1. Unit tests (no API key)
+
+```bash
+go test -v ./...
+# or
+make test
+```
+
+Runs tests for config (env, UUID validation), API client (mock server), and command help.
+
+**One-shot smoke test** (unit tests + build + `magnet --help` + assert missing/invalid API key exits 1):
+
+```bash
+make test-smoke
+```
+
+### 2. CLI locally against the real API
+
+Set your API key, then run commands:
+
+```bash
+export MAGNET_API_KEY="your-uuid-from-magnet-settings"
+go build -o magnet .
+
+# List issues (JSON to stdout)
+./magnet issues list
+./magnet issues list --limit 5
+
+# List pages
+./magnet pages list
+
+# Search
+./magnet search "my query" --types issue,page
+
+# Create (optional – creates real data)
+./magnet issues create --description "CLI test" --title "Test issue"
+./magnet pages create --title "Test page" --markdown "# Hello"
+```
+
+### 3. Expect failure without API key
+
+```bash
+unset MAGNET_API_KEY
+./magnet issues list
+# → stderr: "Missing Magnet API key. Set MAGNET_API_KEY." and exit 1
+```
+
+### 4. CI (GitHub Actions)
+
+- **Push to `main`** or **open a PR** → runs `go test` and `go build` (see [Actions](https://github.com/magnet-run/magnet-cli/actions)).
+- To test CI from a fork, push a branch and open a PR against `main`.
+
+### 5. Release workflow (build + GitHub Release)
+
+- **Push a version tag** to trigger the release workflow:
+
+  ```bash
+  git tag v0.1.0
+  git push origin v0.1.0
+  ```
+
+  This builds binaries for linux-amd64, linux-arm64, darwin-amd64, darwin-arm64, windows-amd64 and creates a GitHub Release with the artifacts.
+
+- To **test the release workflow without publishing** a real release: push a tag like `v0.0.0-test`, run the workflow, then delete the tag and the draft release from the repo.
+
+### 6. NPM wrapper (optional)
+
+From the repo root:
+
+```bash
+cd npm
+npm install
+node bin/download.js   # downloads binary for current OS/arch (requires a published release)
+./bin/magnet.js --help # runs the downloaded binary
+```
+
+The postinstall script needs an existing GitHub Release (e.g. after you’ve pushed a `v*` tag once) to download the binary.
 
 ## License
 
