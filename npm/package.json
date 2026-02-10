@@ -1,6 +1,6 @@
 {
   "name": "@magnet-ai/cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Magnet CLI - download the native binary for your platform",
   "bin": {
     "magnet": "bin/magnet.js"

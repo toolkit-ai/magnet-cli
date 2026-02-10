@@ -35,13 +35,16 @@ function getPlatform() {
   return null;
 }
 
-function fetch(url, redirects = 0) {
+const FETCH_TIMEOUT_MS = 60000;   // 60s for API / metadata
+const DOWNLOAD_TIMEOUT_MS = 120000; // 120s for the binary tarball
+
+function fetch(url, redirects = 0, timeoutMs = FETCH_TIMEOUT_MS) {
   if (redirects > 5) return Promise.reject(new Error('Too many redirects'));
   return new Promise((resolve, reject) => {
     const req = https.get(url, { headers: { 'User-Agent': 'magnet-cli-npm' } }, (res) => {
       if (res.statusCode === 302 || res.statusCode === 301) {
         const loc = res.headers.location;
-        if (loc) return fetch(loc, redirects + 1).then(resolve).catch(reject);
+        if (loc) return fetch(loc, redirects + 1, timeoutMs).then(resolve).catch(reject);
       }
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
@@ -49,6 +52,10 @@ function fetch(url, redirects = 0) {
       res.on('error', reject);
     });
     req.on('error', reject);
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      reject(new Error('Request timed out after ' + (timeoutMs / 1000) + 's'));
+    });
   });
 }
 
@@ -67,13 +74,14 @@ async function main() {
     console.warn('@magnet-ai/cli: No prebuilt binary for ' + process.platform + '/' + process.arch + '. Install from GitHub Releases.');
     return;
   }
+  console.log('@magnet-ai/cli: Downloading binary for ' + platform + '...');
   const tag = VERSION === 'latest' ? await getLatestTag() : VERSION;
   const archiveName = `magnet-cli-${platform}.tar.gz`;
   const url = `https://github.com/${REPO}/releases/download/${tag}/${archiveName}`;
   fs.mkdirSync(BIN_DIR, { recursive: true });
   const destPath = path.join(BIN_DIR, BINARY);
   try {
-    const buf = await fetch(url);
+    const buf = await fetch(url, 0, DOWNLOAD_TIMEOUT_MS);
     if (buf.length < 1000) {
       const text = buf.toString();
       if (text.includes('Not Found')) throw new Error('Release not found: ' + tag);
@@ -92,6 +100,7 @@ async function main() {
       fs.renameSync(extracted, destPath);
     }
     fs.chmodSync(destPath, 0o755);
+    console.log('@magnet-ai/cli: Done.');
   } catch (e) {
     console.warn('@magnet-ai/cli: Could not download binary:', e.message);
   }
