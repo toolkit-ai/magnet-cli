@@ -22,7 +22,7 @@ Choose one of the following. No Node.js is required unless you use the npm insta
 
 ### 1. GitHub Releases (recommended)
 
-Download the binary for your platform from [Releases](https://github.com/magnet-run/magnet-cli/releases). Extract and put `magnet` (or `magnet.exe` on Windows) in your `PATH`.
+Download the binary for your platform from [Releases](https://github.com/toolkit-ai/magnet-cli/releases). Extract and put `magnet` (or `magnet.exe` on Windows) in your `PATH`.
 
 **Example (Linux/macOS):**
 

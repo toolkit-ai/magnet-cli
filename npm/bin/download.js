@@ -8,7 +8,18 @@ const path = require('path');
 const https = require('https');
 const { execSync } = require('child_process');
 
-const REPO = 'magnet-run/magnet-cli';
+// Use repo from package.json so it works when published from any org (e.g. toolkit-ai/magnet-cli)
+function getRepo() {
+  try {
+    const pkg = require(path.join(__dirname, '..', 'package.json'));
+    const url = (pkg.repository && pkg.repository.url) || pkg.repository || '';
+    const m = url.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/);
+    return m ? m[1] : 'toolkit-ai/magnet-cli';
+  } catch (_) {
+    return 'toolkit-ai/magnet-cli';
+  }
+}
+const REPO = process.env.MAGNET_CLI_REPO || getRepo();
 const VERSION = process.env.MAGNET_CLI_VERSION || 'latest';
 const BIN_DIR = path.join(__dirname, '..', 'bin');
 const BINARY = process.platform === 'win32' ? 'magnet.exe' : 'magnet';
@@ -24,23 +35,29 @@ function getPlatform() {
   return null;
 }
 
-function fetch(url) {
+function fetch(url, redirects = 0) {
+  if (redirects > 5) return Promise.reject(new Error('Too many redirects'));
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': 'magnet-cli-npm' } }, (res) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'magnet-cli-npm' } }, (res) => {
       if (res.statusCode === 302 || res.statusCode === 301) {
-        return fetch(res.headers.location).then(resolve).catch(reject);
+        const loc = res.headers.location;
+        if (loc) return fetch(loc, redirects + 1).then(resolve).catch(reject);
       }
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => resolve(Buffer.concat(chunks)));
       res.on('error', reject);
-    }).on('error', reject);
+    });
+    req.on('error', reject);
   });
 }
 
 async function getLatestTag() {
   const data = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`);
-  const j = JSON.parse(data.toString());
+  const text = data.toString();
+  if (text.length < 10) throw new Error('Empty response from GitHub');
+  const j = JSON.parse(text);
+  if (!j.tag_name) throw new Error('No releases found. Push a tag (e.g. v0.1.0) to trigger a release.');
   return j.tag_name;
 }
 

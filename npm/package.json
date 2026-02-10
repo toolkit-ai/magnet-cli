@@ -1,6 +1,6 @@
 {
   "name": "@magnet-ai/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Magnet CLI - download the native binary for your platform",
   "bin": {
     "magnet": "bin/magnet.js"
@@ -10,7 +10,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/magnet-run/magnet-cli.git"
+    "url": "https://github.com/toolkit-ai/magnet-cli.git"
   },
   "keywords": ["magnet", "cli"],
   "license": "MIT"
