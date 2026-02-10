@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: ""
+            artifact: magnet-cli-linux-amd64.tar.gz
+          - goos: linux
+            goarch: arm64
+            suffix: ""
+            artifact: magnet-cli-linux-arm64.tar.gz
+          - goos: darwin
+            goarch: amd64
+            suffix: ""
+            artifact: magnet-cli-darwin-amd64.tar.gz
+          - goos: darwin
+            goarch: arm64
+            suffix: ""
+            artifact: magnet-cli-darwin-arm64.tar.gz
+          - goos: windows
+            goarch: amd64
+            suffix: ".exe"
+            artifact: magnet-cli-windows-amd64.tar.gz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -ldflags="-s -w" -o magnet${{ matrix.suffix }} .
+
+      - name: Archive
+        run: |
+          tar czvf ${{ matrix.artifact }} magnet${{ matrix.suffix }}
+          mkdir -p release-artifacts
+          mv ${{ matrix.artifact }} release-artifacts/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: release-artifacts/${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Flatten artifacts for release
+        run: |
+          mkdir -p release
+          find artifacts -type f -name '*.tar.gz' -exec cp {} release/ \;
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

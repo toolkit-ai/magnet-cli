@@ -1,0 +1,17 @@
+{
+  "name": "@magnet/cli",
+  "version": "0.1.0",
+  "description": "Magnet CLI - download the native binary for your platform",
+  "bin": {
+    "magnet": "bin/magnet.js"
+  },
+  "scripts": {
+    "postinstall": "node bin/download.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/magnet-run/magnet-cli.git"
+  },
+  "keywords": ["magnet", "cli"],
+  "license": "MIT"
+}
