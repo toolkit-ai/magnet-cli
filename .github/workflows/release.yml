@@ -46,7 +46,8 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: go build -ldflags="-s -w" -o magnet${{ matrix.suffix }} .
+          VERSION: ${{ github.ref_name }}
+        run: go build -ldflags="-s -w -X main.Version=${VERSION}" -o magnet${{ matrix.suffix }} .
 
       - name: Archive
         run: |

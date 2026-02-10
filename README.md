@@ -51,7 +51,7 @@ If you have Node.js and npm, you can install the wrapper package. It downloads t
 npm install -g @magnet-ai/cli
 ```
 
-Then run `magnet` as usual.
+Install finishes quickly; the first time you run `magnet`, it downloads the binary (~30s). Then run `magnet` as usual.
 
 ### 3. Homebrew (macOS/Linux)
 
