@@ -10,6 +10,7 @@ describe("api", () => {
     expect(client).toBeDefined();
     expect(typeof client.get).toBe("function");
     expect(typeof client.post).toBe("function");
+    expect(typeof client.put).toBe("function");
   });
 
   test("createClient with explicit key and baseUrl", () => {

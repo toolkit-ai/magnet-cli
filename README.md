@@ -77,17 +77,23 @@ For development, testing, and release workflow, see [CONTRIBUTING.md](CONTRIBUTI
 - **List**: `magnet issues list [--search q] [--limit n] [--cursor c]`  
   Pagination: use `--limit` and `--cursor` (from `pagination.nextCursor`) for the next page.
 
-- **Get**: `magnet issues get <id>`
+- **Get**: `magnet issues get <id> [--preview-only]`  
+  Uses the markdown API; returns issue with `docContent` (full markdown). Use `--preview-only` for truncated `markdownPreview`.
 
 - **Create**: `magnet issues create --description "..." [--title "..."] [--base-branch main]`
+
+- **Update**: `magnet issues update <id> --markdown "..." [--title "..."] [--status todo|in_progress|done|blocked] [--assignee-clerk-id id] [--skip-yjs-sync]`
 
 ### Pages
 
 - **List**: `magnet pages list [--search q] [--limit n] [--cursor c]`
 
-- **Get**: `magnet pages get <id>`
+- **Get**: `magnet pages get <id> [--preview-only]`  
+  Uses the markdown API; returns page with `docContent` (full markdown). Use `--preview-only` for truncated `markdownPreview`.
 
 - **Create**: `magnet pages create --title "..." [--markdown "..."]`
+
+- **Update**: `magnet pages update <id> --markdown "..." [--title "..."] [--skip-yjs-sync]`
 
 ### Search
 

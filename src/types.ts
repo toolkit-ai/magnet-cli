@@ -31,14 +31,18 @@ export interface IssueListItem {
 export interface IssueDetail {
   id: string;
   title: string;
-  description: string;
+  description?: string;
   status: string;
   baseBranch: string;
-  branchName: string;
+  branchName?: string;
   createdAt: string;
   updatedAt: string;
-  createdClerkId: string;
-  organizationId: string;
+  createdClerkId?: string;
+  organizationId?: string;
+  /** Full markdown body when fetched via GET /api/issues/:id/markdown */
+  docContent?: string;
+  /** Truncated markdown when fetched with previewOnly=true */
+  markdownPreview?: string;
 }
 
 export interface GetIssueResponse {
@@ -54,7 +58,20 @@ export interface CreateIssueMarkdownRequest {
 }
 
 export interface CreateIssueResponse {
-  id: string;
+  issue?: IssueDetail;
+  id?: string;
+}
+
+export interface UpdateIssueMarkdownRequest {
+  markdown: string;
+  title?: string;
+  status?: "todo" | "in_progress" | "done" | "blocked";
+  assigneeClerkId?: string;
+  skipYjsSync?: boolean;
+}
+
+export interface UpdateIssueResponse {
+  issue: IssueDetail;
 }
 
 export interface ListPagesResponse {
@@ -75,7 +92,10 @@ export interface PageDetail {
   title: string;
   createdAt: string;
   updatedAt: string;
-  organizationId: string;
+  organizationId?: string;
+  /** Full markdown body when fetched via GET /api/pages/:id/markdown */
+  docContent?: string;
+  markdownPreview?: string;
 }
 
 export interface GetPageResponse {
@@ -88,7 +108,19 @@ export interface CreatePageMarkdownRequest {
 }
 
 export interface CreatePageResponse {
-  id: string;
+  page?: PageDetail;
+  id?: string;
+}
+
+export interface UpdatePageMarkdownRequest {
+  markdown: string;
+  title?: string;
+  properties?: Record<string, unknown>;
+  skipYjsSync?: boolean;
+}
+
+export interface UpdatePageResponse {
+  page: PageDetail;
 }
 
 export interface SearchResponse {

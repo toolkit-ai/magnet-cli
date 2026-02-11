@@ -8,11 +8,15 @@ import type {
   IssueDetail,
   CreateIssueMarkdownRequest,
   CreateIssueResponse,
+  UpdateIssueMarkdownRequest,
+  UpdateIssueResponse,
   ListPagesResponse,
   GetPageResponse,
   PageDetail,
   CreatePageMarkdownRequest,
   CreatePageResponse,
+  UpdatePageMarkdownRequest,
+  UpdatePageResponse,
   SearchResponse,
 } from "./types";
 
@@ -70,19 +74,22 @@ issues
 
 issues
   .command("get <id>")
-  .description("Get an issue by ID")
-  .action(async (id: string) => {
+  .description("Get an issue by ID (markdown API; returns docContent)")
+  .option("--preview-only", "Return truncated markdownPreview instead of full body")
+  .action(async (id: string, opts: { previewOnly?: boolean }) => {
     try {
       getApiKey();
       const api = createClient();
-      const data = await api.get<GetIssueResponse | IssueDetail>(
-        `/api/issues/${encodeURIComponent(id)}`
+      const params: Record<string, string> = {};
+      if (opts.previewOnly) params.previewOnly = "true";
+      const data = await api.get<GetIssueResponse>(
+        `/api/issues/${encodeURIComponent(id)}/markdown`,
+        params
       );
-      const wrapped = data as GetIssueResponse;
-      if (wrapped?.issue) {
-        jsonOut(wrapped.issue);
+      if (data?.issue) {
+        jsonOut(data.issue);
       } else {
-        jsonOut(data as IssueDetail);
+        jsonOut(data);
       }
     } catch (e) {
       handleError(e);
@@ -106,6 +113,33 @@ issues
       };
       if (opts.title) body.title = opts.title;
       const out = await api.post<CreateIssueResponse>("/api/issues/markdown", body);
+      jsonOut(out);
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+issues
+  .command("update <id>")
+  .description("Update an issue (markdown API)")
+  .requiredOption("--markdown <text>", "New issue body (markdown)")
+  .option("--title <text>", "New title")
+  .option("--status <status>", "Status: todo | in_progress | done | blocked")
+  .option("--assignee-clerk-id <id>", "Clerk user ID to assign")
+  .option("--skip-yjs-sync", "Skip syncing to Yjs (e.g. for bulk updates)")
+  .action(async (id: string, opts: { markdown: string; title?: string; status?: string; assigneeClerkId?: string; skipYjsSync?: boolean }) => {
+    try {
+      getApiKey();
+      const api = createClient();
+      const body: UpdateIssueMarkdownRequest = { markdown: opts.markdown };
+      if (opts.title !== undefined) body.title = opts.title;
+      if (opts.status !== undefined) body.status = opts.status as UpdateIssueMarkdownRequest["status"];
+      if (opts.assigneeClerkId !== undefined) body.assigneeClerkId = opts.assigneeClerkId;
+      if (opts.skipYjsSync === true) body.skipYjsSync = true;
+      const out = await api.put<UpdateIssueResponse>(
+        `/api/issues/${encodeURIComponent(id)}/markdown`,
+        body
+      );
       jsonOut(out);
     } catch (e) {
       handleError(e);
@@ -142,19 +176,22 @@ pages
 
 pages
   .command("get <id>")
-  .description("Get a page by ID")
-  .action(async (id: string) => {
+  .description("Get a page by ID (markdown API; returns docContent)")
+  .option("--preview-only", "Return truncated markdownPreview instead of full body")
+  .action(async (id: string, opts: { previewOnly?: boolean }) => {
     try {
       getApiKey();
       const api = createClient();
-      const data = await api.get<GetPageResponse | PageDetail>(
-        `/api/pages/${encodeURIComponent(id)}`
+      const params: Record<string, string> = {};
+      if (opts.previewOnly) params.previewOnly = "true";
+      const data = await api.get<GetPageResponse>(
+        `/api/pages/${encodeURIComponent(id)}/markdown`,
+        params
       );
-      const wrapped = data as GetPageResponse;
-      if (wrapped?.page) {
-        jsonOut(wrapped.page);
+      if (data?.page) {
+        jsonOut(data.page);
       } else {
-        jsonOut(data as PageDetail);
+        jsonOut(data);
       }
     } catch (e) {
       handleError(e);
@@ -175,6 +212,29 @@ pages
         markdown: opts.markdown?.trim() ? opts.markdown : opts.title,
       };
       const out = await api.post<CreatePageResponse>("/api/pages/markdown", body);
+      jsonOut(out);
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+pages
+  .command("update <id>")
+  .description("Update a page (markdown API)")
+  .requiredOption("--markdown <text>", "New page body (markdown)")
+  .option("--title <text>", "New title")
+  .option("--skip-yjs-sync", "Skip syncing to Yjs (e.g. for bulk updates)")
+  .action(async (id: string, opts: { markdown: string; title?: string; skipYjsSync?: boolean }) => {
+    try {
+      getApiKey();
+      const api = createClient();
+      const body: UpdatePageMarkdownRequest = { markdown: opts.markdown };
+      if (opts.title !== undefined) body.title = opts.title;
+      if (opts.skipYjsSync === true) body.skipYjsSync = true;
+      const out = await api.put<UpdatePageResponse>(
+        `/api/pages/${encodeURIComponent(id)}/markdown`,
+        body
+      );
       jsonOut(out);
     } catch (e) {
       handleError(e);
