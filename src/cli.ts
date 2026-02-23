@@ -102,6 +102,7 @@ issues
   .requiredOption("--description <text>", "Issue description (markdown); required")
   .option("--title <text>", "Issue title (optional)")
   .option("--base-branch <branch>", "Base branch name", "main")
+  .option("--image <path>", "Attach an image (repeatable)", (val: string, acc: string[]) => { acc.push(val); return acc; }, [] as string[])
   .action(async (opts) => {
     try {
       getApiKey();
@@ -112,6 +113,23 @@ issues
         baseBranch: opts.baseBranch ?? "main",
       };
       if (opts.title) body.title = opts.title;
+      if (opts.image && opts.image.length > 0) {
+        const fs = await import("fs");
+        const path = await import("path");
+        const mimeTypes: Record<string, string> = {
+          ".png": "image/png",
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".gif": "image/gif",
+          ".webp": "image/webp",
+        };
+        body.images = opts.image.map((imgPath: string) => {
+          const data = fs.readFileSync(imgPath).toString("base64");
+          const ext = path.extname(imgPath).toLowerCase();
+          const mimeType = mimeTypes[ext] || "application/octet-stream";
+          return { data, mimeType, filename: path.basename(imgPath) };
+        });
+      }
       const out = await api.post<CreateIssueResponse>("/api/issues/markdown", body);
       jsonOut(out);
     } catch (e) {
