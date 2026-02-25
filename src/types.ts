@@ -55,6 +55,7 @@ export interface CreateIssueMarkdownRequest {
   title?: string;
   baseBranch: string;
   status?: string;
+  images?: Array<{ data: string; mimeType: string; filename?: string }>;
 }
 
 export interface CreateIssueResponse {
