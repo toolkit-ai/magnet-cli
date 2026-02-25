@@ -1,7 +1,8 @@
 import { Command } from "commander";
-import { createClient } from "./api";
+import { createClient, uploadToPresignedUrl } from "./api";
 import { getApiKey } from "./config";
 import { DEFAULT_LIST_LIMIT_VALUE } from "./config";
+import { parseDurationToSeconds } from "./duration";
 import type {
   ListIssuesResponse,
   GetIssueResponse,
@@ -18,6 +19,9 @@ import type {
   UpdatePageMarkdownRequest,
   UpdatePageResponse,
   SearchResponse,
+  SandboxImageUploadInitResponse,
+  SandboxImageUploadCompleteResponse,
+  SandboxImageUploadStatusResponse,
 } from "./types";
 
 const VERSION = process.env.MAGNET_CLI_VERSION ?? "dev";
@@ -256,6 +260,110 @@ program
       jsonOut(out);
     } catch (e) {
       handleError(e);
+    }
+  });
+
+// --- sandbox-image ---
+const sandboxImage = program
+  .command("sandbox-image")
+  .description("Sandbox image operations");
+
+const DEFAULT_POLL_INTERVAL = "2s";
+const DEFAULT_TIMEOUT = "20m";
+
+sandboxImage
+  .command("register <tarball>")
+  .description("Register a custom sandbox image from a Docker save tarball. Uploads the tarball and polls until the image is ready or failed.")
+  .requiredOption("--name <name>", "Display name for the custom image")
+  .requiredOption("--description <description>", "Description for the image")
+  .option("--poll-interval <duration>", "Interval between status polls (e.g. 2s, 3s)", DEFAULT_POLL_INTERVAL)
+  .option("--timeout <duration>", "Max time to wait for ready/failed (e.g. 15m, 20m)", DEFAULT_TIMEOUT)
+  .addHelpText("after", `
+Prerequisites:
+  Create a tarball with: docker save -o image.tar <image:tag>
+  For Cloudflare compatibility use: docker save --platform linux/amd64 -o image.tar <image:tag>
+
+Environment:
+  MAGNET_API_KEY  Required. Set to your Magnet API key (scoped to your organization).
+  MAGNET_API_URL  Optional. Default: https://www.magnet.run (use http://localhost:3000 for local testing)
+
+Examples:
+  $ magnet sandbox-image register ./image.tar --name "My Image" --description "Test image"
+  $ MAGNET_API_URL=http://localhost:3000 magnet sandbox-image register ./image.tar --name "Local" --description "Local test"
+`)
+  .action(async (tarball: string, opts: { name: string; description: string; pollInterval?: string; timeout?: string }) => {
+    try {
+      getApiKey();
+      const name = opts.name;
+      const description = opts.description;
+
+      const pollIntervalSec = parseDurationToSeconds(opts.pollInterval ?? DEFAULT_POLL_INTERVAL);
+      const timeoutSec = parseDurationToSeconds(opts.timeout ?? DEFAULT_TIMEOUT);
+
+      const file = Bun.file(tarball);
+      if (!(await file.exists())) {
+        console.error(`File not found or not readable: ${tarball}`);
+        process.exit(1);
+      }
+
+      const api = createClient();
+
+      const initRes = await api.post<SandboxImageUploadInitResponse>("/api/sandbox-images/upload/init", { name, description });
+      const uploadId = initRes.uploadId;
+      const presignedUrl = initRes.presignedUrl;
+      const expiresAt = initRes.expiresAt;
+      if (!uploadId || !presignedUrl || !expiresAt) {
+        console.error("Invalid init response: missing uploadId, presignedUrl, or expiresAt");
+        process.exit(1);
+      }
+      const expiresAtMs = new Date(expiresAt).getTime();
+      if (Number.isNaN(expiresAtMs) || expiresAtMs <= Date.now()) {
+        console.error("Presigned URL has already expired");
+        process.exit(1);
+      }
+
+      const totalBytes = file.size;
+      const progressIntervalMs = 2000;
+      let lastProgress = 0;
+      await uploadToPresignedUrl(presignedUrl, tarball, (bytesUploaded) => {
+        const now = Date.now();
+        if (now - lastProgress >= progressIntervalMs || bytesUploaded >= totalBytes) {
+          lastProgress = now;
+          const pct = totalBytes > 0 ? Math.round((bytesUploaded / totalBytes) * 100) : 0;
+          console.error(`Uploading… ${pct}% (${bytesUploaded}/${totalBytes} bytes)`);
+        }
+      });
+
+      const completeRes = await api.post<SandboxImageUploadCompleteResponse>("/api/sandbox-images/upload/complete", { uploadId });
+      const statusUrl = completeRes.statusUrl ?? `/api/sandbox-images/upload/status/${uploadId}`;
+
+      const pollStart = Date.now();
+      for (;;) {
+        const statusRes = await api.get<SandboxImageUploadStatusResponse>(statusUrl);
+        if (statusRes.status === "ready") {
+          console.log(statusRes.sandboxImageId
+            ? `Sandbox image registered. sandboxImageId: ${statusRes.sandboxImageId}`
+            : "Sandbox image registered.");
+          return;
+        }
+        if (statusRes.status === "failed") {
+          console.error("Registration failed:", statusRes.errorMessage ?? "Unknown error");
+          process.exit(1);
+        }
+        console.error("Status:", statusRes.status);
+        if (Date.now() - pollStart >= timeoutSec * 1000) {
+          console.error("Timeout waiting for image to become ready");
+          process.exit(1);
+        }
+        await new Promise((r) => setTimeout(r, pollIntervalSec * 1000));
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith("fetch")) {
+        console.error("Network error:", e.message);
+      } else {
+        handleError(e);
+      }
+      process.exit(1);
     }
   });
 

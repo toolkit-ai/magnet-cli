@@ -143,3 +143,38 @@ export interface User {
   firstName: string;
   lastName: string;
 }
+
+// --- Sandbox image upload ---
+
+export interface SandboxImageUploadInitRequest {
+  name: string;
+  description: string;
+}
+
+export interface SandboxImageUploadInitResponse {
+  uploadId: string;
+  presignedUrl: string;
+  expiresAt: string;
+}
+
+export interface SandboxImageUploadCompleteRequest {
+  uploadId: string;
+}
+
+export interface SandboxImageUploadCompleteResponse {
+  jobId: string;
+  statusUrl: string;
+}
+
+export type SandboxImageUploadStatus =
+  | "pending_upload"
+  | "processing"
+  | "ready"
+  | "failed";
+
+export interface SandboxImageUploadStatusResponse {
+  uploadId: string;
+  status: SandboxImageUploadStatus;
+  errorMessage?: string | null;
+  sandboxImageId?: string | null;
+}

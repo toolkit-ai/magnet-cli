@@ -14,8 +14,12 @@ function errorMessage(code: number, body: ErrorBody, _path: string): string {
       return `Bad request: ${text}`;
     case 404:
       return `Not found: ${text}`;
+    case 409:
+      return `Conflict: ${text}`;
     case 500:
       return `Server error: ${text}`;
+    case 503:
+      return `Service unavailable: ${text}`;
     default:
       return `Error ${code}: ${text}`;
   }
@@ -84,4 +88,43 @@ export function createClient(apiKey?: string, baseUrl?: string) {
       return request<T>("PUT", path, { body });
     },
   };
+}
+
+/**
+ * Upload a file to a presigned URL (e.g. R2). No API key or Magnet headers.
+ * Optionally report progress to stderr via onProgress(bytesUploaded, totalBytes).
+ */
+export async function uploadToPresignedUrl(
+  presignedUrl: string,
+  filePath: string,
+  onProgress?: (bytesUploaded: number, totalBytes: number) => void
+): Promise<void> {
+  const file = Bun.file(filePath);
+  const totalBytes = file.size;
+
+  if (onProgress) onProgress(0, totalBytes);
+  const arrayBuffer = await file.arrayBuffer();
+  if (onProgress) onProgress(totalBytes, totalBytes);
+
+  const res = await fetch(presignedUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/x-tar",
+      "Content-Length": String(totalBytes),
+    },
+    body: arrayBuffer,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    let msg: string;
+    try {
+      const parsed = JSON.parse(text) as ErrorBody;
+      const fromBody = parsed.error ?? parsed.details ?? parsed.message;
+      msg = fromBody ?? (text ? text : `HTTP ${res.status}`);
+    } catch {
+      msg = text ? text : `HTTP ${res.status}`;
+    }
+    throw new ApiError(`Upload failed: ${msg}`, res.status, text);
+  }
 }

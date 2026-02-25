@@ -99,6 +99,24 @@ For development, testing, and release workflow, see [CONTRIBUTING.md](CONTRIBUTI
 
 - **Search**: `magnet search <query> [--types issue,page]`
 
+### Sandbox Image
+
+- **Register**: `magnet sandbox-image register <path-to-tarball> --name <name> --description <description>`  
+  Registers a custom sandbox image from a Docker save tarball. Uploads the file, then polls until the image is ready or failed. The organization is derived automatically from your API key.
+
+  **Prerequisites:** Create a tarball with `docker save -o image.tar <image:tag>`. For Cloudflare compatibility use `--platform linux/amd64`.
+
+  **Options:**  
+  - `--poll-interval <duration>` — Interval between status polls (default `2s`)  
+  - `--timeout <duration>` — Max time to wait for ready/failed (default `20m`)
+
+  **Examples:**
+
+  ```bash
+  magnet sandbox-image register ./image.tar --name "My Image" --description "Test image"
+  MAGNET_API_URL=http://localhost:3000 magnet sandbox-image register ./image.tar --name "Local" --description "Local test"
+  ```
+
 ## Output
 
 All commands print JSON to stdout. Errors go to stderr and the process exits with a non-zero code.

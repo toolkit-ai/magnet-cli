@@ -2,6 +2,7 @@
 magnet.exe
 bin/magnet
 bin/magnet.exe
+*.tar
 *.tar.gz
 *.zip
 node_modules/
