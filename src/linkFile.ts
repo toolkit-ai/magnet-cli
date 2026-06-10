@@ -9,6 +9,20 @@ export interface ProjectLink {
 
 const LINK_DIR = ".magnet";
 const LINK_FILE = "project.json";
+const README_FILE = "README.txt";
+
+const README_CONTENT = `> Why do I have a folder named ".magnet" in my project?
+The ".magnet" folder is created when you link a directory to a Magnet organization.
+
+> What does the "project.json" file contain?
+The "project.json" file contains:
+- The ID of the Magnet organization that you linked ("orgId")
+- The slug and name of that organization ("orgSlug", "orgName")
+
+> Should I commit the ".magnet" folder?
+No, you should not share the ".magnet" folder with anyone.
+Upon creation, it will be automatically added to your ".gitignore" file.
+`;
 
 export function linkFilePath(dir: string): string {
   return join(dir, LINK_DIR, LINK_FILE);
@@ -51,6 +65,7 @@ export async function writeProjectLink(
   await mkdir(target, { recursive: true });
   const path = join(target, LINK_FILE);
   await writeFile(path, JSON.stringify(link, null, 2) + "\n");
+  await writeFile(join(target, README_FILE), README_CONTENT);
   return path;
 }
 

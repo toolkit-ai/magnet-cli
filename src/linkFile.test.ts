@@ -31,6 +31,13 @@ describe("linkFile", () => {
     expect(await readProjectLink(dir)).toEqual(link);
   });
 
+  test("writeProjectLink drops a README explaining the folder", async () => {
+    await writeProjectLink(dir, { orgId: "org_123", orgSlug: null, orgName: "" });
+    const readme = await readFile(join(dir, ".magnet", "README.txt"), "utf8");
+    expect(readme).toContain('folder named ".magnet"');
+    expect(readme).toContain("should not share");
+  });
+
   test("readProjectLink returns null for malformed json", async () => {
     await mkdir(join(dir, ".magnet"), { recursive: true });
     await writeFile(join(dir, ".magnet", "project.json"), "not json");
