@@ -87,9 +87,40 @@ const program = new Command();
 program
   .name("magnet")
   .description(
-    `Magnet CLI ${VERSION} — issues, pages, and search.\n\nMagnet CLI talks to the Magnet API. Set MAGNET_API_KEY. Optional: MAGNET_API_URL (default https://www.magnet.run).`
+    `Magnet CLI ${VERSION} — issues, pages, and search.\n\nMagnet CLI talks to the Magnet API. Run magnet login, or set MAGNET_API_KEY for workspace-key access. Optional: MAGNET_API_URL (default https://www.magnet.run).`
   )
   .version(VERSION);
+
+
+/**
+ * Auth for data commands: MAGNET_API_KEY (workspace key) wins; otherwise the
+ * stored login token is used and the workspace comes from the project link,
+ * since user tokens aren't workspace-scoped.
+ */
+async function requireDataClient(): Promise<{
+  api: ReturnType<typeof createClientWithHeaders>;
+  orgParams: Record<string, string>;
+}> {
+  const credential = await resolveCredential();
+  if (!credential) {
+    console.error(
+      "Not logged in. Run magnet login, or set MAGNET_API_KEY for workspace-key access."
+    );
+    process.exit(1);
+  }
+  const api = createClientWithHeaders(credentialHeaders(credential));
+  if (credential.kind === "orgApiKey") {
+    return { api, orgParams: {} };
+  }
+  const found = await findProjectLink(process.cwd());
+  if (!found) {
+    console.error(
+      "Logged in as a user, but this directory isn't linked to a workspace. Run magnet link first (or set MAGNET_API_KEY)."
+    );
+    process.exit(1);
+  }
+  return { api, orgParams: { organizationId: found.link.orgId } };
+}
 
 // --- issues ---
 const issues = program
@@ -104,9 +135,8 @@ issues
   .option("--cursor <c>", "Pagination cursor (use pagination.nextCursor from previous response)")
   .action(async (opts) => {
     try {
-      getApiKey();
-      const api = createClient();
-      const params: Record<string, string> = {};
+      const { api, orgParams } = await requireDataClient();
+      const params: Record<string, string> = { ...orgParams };
       if (opts.search) params.search = opts.search;
       let limit = opts.limit;
       if (opts.cursor && (limit == null || limit <= 0)) limit = DEFAULT_LIST_LIMIT_VALUE;
@@ -125,9 +155,8 @@ issues
   .option("--preview-only", "Return truncated markdownPreview instead of full body")
   .action(async (id: string, opts: { previewOnly?: boolean }) => {
     try {
-      getApiKey();
-      const api = createClient();
-      const params: Record<string, string> = {};
+      const { api, orgParams } = await requireDataClient();
+      const params: Record<string, string> = { ...orgParams };
       if (opts.previewOnly) params.previewOnly = "true";
       const data = await api.get<GetIssueResponse>(
         `/api/issues/${encodeURIComponent(id)}/markdown`,
@@ -151,14 +180,14 @@ issues
   .option("--base-branch <branch>", "Base branch name", "main")
   .action(async (opts) => {
     try {
-      getApiKey();
-      const api = createClient();
+      const { api, orgParams } = await requireDataClient();
       const body: CreateIssueMarkdownRequest = {
         markdown: opts.description,
         description: opts.description,
         baseBranch: opts.baseBranch ?? "main",
       };
       if (opts.title) body.title = opts.title;
+      if (orgParams.organizationId) body.organizationId = orgParams.organizationId;
       const out = await api.post<CreateIssueResponse>("/api/issues/markdown", body);
       jsonOut(out);
     } catch (e) {
@@ -176,8 +205,7 @@ issues
   .option("--skip-yjs-sync", "Skip syncing to Yjs (e.g. for bulk updates)")
   .action(async (id: string, opts: { markdown: string; title?: string; status?: string; assigneeClerkId?: string; skipYjsSync?: boolean }) => {
     try {
-      getApiKey();
-      const api = createClient();
+      const { api, orgParams } = await requireDataClient();
       const body: UpdateIssueMarkdownRequest = { markdown: opts.markdown };
       if (opts.title !== undefined) body.title = opts.title;
       if (opts.status !== undefined) body.status = opts.status as UpdateIssueMarkdownRequest["status"];
@@ -206,9 +234,8 @@ pages
   .option("--cursor <c>", "Pagination cursor (use pagination.nextCursor from previous response)")
   .action(async (opts) => {
     try {
-      getApiKey();
-      const api = createClient();
-      const params: Record<string, string> = {};
+      const { api, orgParams } = await requireDataClient();
+      const params: Record<string, string> = { ...orgParams };
       if (opts.search) params.search = opts.search;
       let limit = opts.limit;
       if (opts.cursor && (limit == null || limit <= 0)) limit = DEFAULT_LIST_LIMIT_VALUE;
@@ -227,9 +254,8 @@ pages
   .option("--preview-only", "Return truncated markdownPreview instead of full body")
   .action(async (id: string, opts: { previewOnly?: boolean }) => {
     try {
-      getApiKey();
-      const api = createClient();
-      const params: Record<string, string> = {};
+      const { api, orgParams } = await requireDataClient();
+      const params: Record<string, string> = { ...orgParams };
       if (opts.previewOnly) params.previewOnly = "true";
       const data = await api.get<GetPageResponse>(
         `/api/pages/${encodeURIComponent(id)}/markdown`,
@@ -252,12 +278,12 @@ pages
   .option("--markdown <text>", "Page content (markdown); defaults to title if empty")
   .action(async (opts) => {
     try {
-      getApiKey();
-      const api = createClient();
+      const { api, orgParams } = await requireDataClient();
       const body: CreatePageMarkdownRequest = {
         title: opts.title,
         markdown: opts.markdown?.trim() ? opts.markdown : opts.title,
       };
+      if (orgParams.organizationId) body.organizationId = orgParams.organizationId;
       const out = await api.post<CreatePageResponse>("/api/pages/markdown", body);
       jsonOut(out);
     } catch (e) {
@@ -273,8 +299,7 @@ pages
   .option("--skip-yjs-sync", "Skip syncing to Yjs (e.g. for bulk updates)")
   .action(async (id: string, opts: { markdown: string; title?: string; skipYjsSync?: boolean }) => {
     try {
-      getApiKey();
-      const api = createClient();
+      const { api, orgParams } = await requireDataClient();
       const body: UpdatePageMarkdownRequest = { markdown: opts.markdown };
       if (opts.title !== undefined) body.title = opts.title;
       if (opts.skipYjsSync === true) body.skipYjsSync = true;
@@ -295,9 +320,8 @@ program
   .option("--types <list>", "Comma-separated types: issue, page (default: both)")
   .action(async (query: string, opts) => {
     try {
-      getApiKey();
-      const api = createClient();
-      const params: Record<string, string> = { query };
+      const { api, orgParams } = await requireDataClient();
+      const params: Record<string, string> = { ...orgParams, query };
       if (opts.types) params.types = opts.types;
       const out = await api.get<SearchResponse>("/api/search", params);
       jsonOut(out);

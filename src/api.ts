@@ -7,7 +7,7 @@ function errorMessage(code: number, body: ErrorBody, _path: string): string {
   const text = msg || `HTTP ${code}`;
   switch (code) {
     case 401:
-      return `Unauthorized: ${text} Check your API key. Set MAGNET_API_KEY.`;
+      return `Unauthorized: ${text} Run magnet login, or check MAGNET_API_KEY.`;
     case 403:
       return `Forbidden: ${text}`;
     case 400:
