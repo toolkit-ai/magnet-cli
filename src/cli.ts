@@ -16,6 +16,7 @@ import {
   saveCredential,
 } from "./authStore";
 import { runDeviceFlow, tryOpenBrowser } from "./deviceFlow";
+import { writeAgentRules } from "./agentRules";
 import {
   ensureGitignoreHasMagnet,
   findProjectLink,
@@ -527,7 +528,8 @@ program
   .option("--workspace <idOrSlug>", "Workspace id or slug (skips the picker)")
   .option("--org <idOrSlug>", "Alias for --workspace")
   .option("--yes", "Skip confirmation prompts (for CI)")
-  .action(async (opts: { workspace?: string; org?: string; yes?: boolean }) => {
+  .option("--rules", "Also write Claude Code and Cursor agent rules without asking")
+  .action(async (opts: { workspace?: string; org?: string; yes?: boolean; rules?: boolean }) => {
     try {
       const cwd = process.cwd();
       const requestedWorkspace = opts.workspace ?? opts.org;
@@ -613,6 +615,43 @@ program
         `  Created ${path}` +
           (gitignoreUpdated ? " (added .magnet to .gitignore)" : "")
       );
+
+      const setupRules =
+        opts.rules === true ||
+        (!opts.yes &&
+          isInteractive() &&
+          (await promptConfirm(
+            "Set up agent rules so Claude Code and Cursor know how to use Magnet?"
+          )));
+      if (setupRules) {
+        const written = await writeAgentRules(cwd, {
+          orgId: chosen.id,
+          orgSlug: chosen.slug,
+          orgName: chosen.name,
+        });
+        console.error(`✔ Wrote agent rules to ${written.claudePath} and ${written.cursorPath}`);
+        console.error("  Commit these so your whole team's agents pick them up.");
+      }
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("rules")
+  .description(
+    "Write Claude Code and Cursor rules that teach agents to use the magnet CLI (requires a linked project)"
+  )
+  .action(async () => {
+    try {
+      const found = await findProjectLink(process.cwd());
+      if (!found) {
+        console.error("No project linked. Run magnet link to link this directory to a workspace.");
+        process.exit(1);
+      }
+      const written = await writeAgentRules(found.dir, found.link);
+      console.error(`✔ Wrote agent rules to ${written.claudePath} and ${written.cursorPath}`);
+      console.error("  Re-run magnet rules anytime to refresh them after CLI updates.");
     } catch (e) {
       handleError(e);
     }
