@@ -38,6 +38,14 @@ export class ApiError extends Error {
 
 export function createClient(apiKey?: string, baseUrl?: string) {
   const key = apiKey ?? getApiKey();
+  return createClientWithHeaders({ "x-api-key": key }, baseUrl);
+}
+
+/** Client with caller-provided auth headers (org API key or Bearer CLI token). */
+export function createClientWithHeaders(
+  authHeaders: Record<string, string>,
+  baseUrl?: string
+) {
   const base = (baseUrl ?? getBaseUrl()).replace(/\/+$/, "");
 
   async function request<T>(
@@ -51,9 +59,7 @@ export function createClient(apiKey?: string, baseUrl?: string) {
         if (v !== undefined && v !== "") url.searchParams.set(k, v);
       }
     }
-    const headers: Record<string, string> = {
-      "x-api-key": key,
-    };
+    const headers: Record<string, string> = { ...authHeaders };
     if (opts?.body !== undefined) {
       headers["Content-Type"] = "application/json";
     }
@@ -86,6 +92,9 @@ export function createClient(apiKey?: string, baseUrl?: string) {
     },
     put<T>(path: string, body: unknown): Promise<T> {
       return request<T>("PUT", path, { body });
+    },
+    delete<T>(path: string, query?: Record<string, string>): Promise<T> {
+      return request<T>("DELETE", path, { query });
     },
   };
 }

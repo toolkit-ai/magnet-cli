@@ -30,3 +30,30 @@ export function getBaseUrl(): string {
 }
 
 export const DEFAULT_LIST_LIMIT_VALUE = DEFAULT_LIST_LIMIT;
+
+export type Credential =
+  | { kind: "orgApiKey"; value: string }
+  | { kind: "cliToken"; value: string };
+
+export function credentialHeaders(cred: Credential): Record<string, string> {
+  return cred.kind === "orgApiKey"
+    ? { "x-api-key": cred.value }
+    : { Authorization: `Bearer ${cred.value}` };
+}
+
+/**
+ * Credential precedence: MAGNET_API_KEY env var (org key) wins over a stored
+ * CLI token from `magnet login`, so existing scripted/CI usage is unchanged.
+ */
+export async function resolveCredential(): Promise<Credential | null> {
+  const envKey = (process.env.MAGNET_API_KEY ?? "").trim();
+  if (envKey) {
+    const key = getApiKeyOrError();
+    if (key instanceof Error) throw key;
+    return { kind: "orgApiKey", value: key };
+  }
+  const { getStoredCredential } = await import("./authStore");
+  const stored = await getStoredCredential(getBaseUrl());
+  if (stored) return { kind: "cliToken", value: stored.token };
+  return null;
+}

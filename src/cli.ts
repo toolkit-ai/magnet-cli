@@ -1,7 +1,32 @@
 import { Command } from "commander";
-import { createClient, uploadToPresignedUrl } from "./api";
+import { basename } from "path";
+import { createClient, createClientWithHeaders, uploadToPresignedUrl } from "./api";
 import { getApiKey } from "./config";
-import { DEFAULT_LIST_LIMIT_VALUE } from "./config";
+import {
+  DEFAULT_LIST_LIMIT_VALUE,
+  getBaseUrl,
+  resolveCredential,
+  credentialHeaders,
+  type Credential,
+} from "./config";
+import {
+  authFilePath,
+  getStoredCredential,
+  removeCredential,
+  saveCredential,
+} from "./authStore";
+import { runDeviceFlow } from "./deviceFlow";
+import {
+  ensureGitignoreHasMagnet,
+  readProjectLink,
+  writeProjectLink,
+} from "./linkFile";
+import {
+  isInteractive,
+  promptConfirm,
+  promptSelect,
+  promptText,
+} from "./prompt";
 import { parseDurationToSeconds } from "./duration";
 import type {
   ListIssuesResponse,
@@ -284,7 +309,7 @@ Prerequisites:
   For Cloudflare compatibility use: docker save --platform linux/amd64 -o image.tar <image:tag>
 
 Environment:
-  MAGNET_API_KEY  Required. Set to your Magnet API key (scoped to your organization).
+  MAGNET_API_KEY  Required. Set to your Magnet API key (scoped to your workspace).
   MAGNET_API_URL  Optional. Default: https://www.magnet.run (use http://localhost:3000 for local testing)
 
 Examples:
@@ -364,6 +389,231 @@ Examples:
         handleError(e);
       }
       process.exit(1);
+    }
+  });
+
+// --- auth & linking ---
+
+async function requireUserClient(): Promise<{
+  api: ReturnType<typeof createClientWithHeaders>;
+  credential: Credential;
+}> {
+  let credential = await resolveCredential();
+  if (!credential) {
+    if (!isInteractive()) {
+      console.error(
+        "Not logged in. Run magnet login, or set MAGNET_API_KEY for workspace-key access."
+      );
+      process.exit(1);
+    }
+    console.error("Not logged in. Starting login...");
+    credential = await loginWithDeviceFlow({});
+  }
+  return {
+    api: createClientWithHeaders(credentialHeaders(credential)),
+    credential,
+  };
+}
+
+async function loginWithDeviceFlow(opts: {
+  noBrowser?: boolean;
+}): Promise<Credential> {
+  const baseUrl = getBaseUrl();
+  const token = await runDeviceFlow(baseUrl, { noBrowser: opts.noBrowser });
+  const credential: Credential = { kind: "cliToken", value: token };
+  const me = await fetchMe(credential);
+  await saveCredential(baseUrl, { token, userEmail: me.email ?? undefined });
+  console.error(
+    `\n✔ Logged in as ${me.email ?? me.id} (token saved to ${authFilePath()})`
+  );
+  return credential;
+}
+
+async function fetchMe(
+  credential: Credential
+): Promise<{ id: string; email: string | null; firstName?: string | null; lastName?: string | null }> {
+  const api = createClientWithHeaders(credentialHeaders(credential));
+  return api.get("/api/me");
+}
+
+program
+  .command("login")
+  .description("Log in to Magnet (browser device flow, or paste a token)")
+  .option("--token <token>", "Use an existing CLI token instead of the browser flow")
+  .option("--no-browser", "Don't open a browser; print the URL and code instead")
+  .action(async (opts: { token?: string; browser?: boolean }) => {
+    try {
+      const baseUrl = getBaseUrl();
+      if (opts.token) {
+        const credential: Credential = { kind: "cliToken", value: opts.token.trim() };
+        const me = await fetchMe(credential);
+        await saveCredential(baseUrl, {
+          token: credential.value,
+          userEmail: me.email ?? undefined,
+        });
+        console.error(`✔ Token valid. Logged in as ${me.email ?? me.id}`);
+        return;
+      }
+      await loginWithDeviceFlow({ noBrowser: opts.browser === false });
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("logout")
+  .description("Revoke the stored CLI token and remove it from this machine")
+  .action(async () => {
+    try {
+      const baseUrl = getBaseUrl();
+      const stored = await getStoredCredential(baseUrl);
+      if (!stored) {
+        console.error("Not logged in (no stored token for " + baseUrl + ").");
+        return;
+      }
+      try {
+        const api = createClientWithHeaders(
+          credentialHeaders({ kind: "cliToken", value: stored.token })
+        );
+        await api.delete("/api/cli/tokens");
+      } catch (e) {
+        // Best effort: still remove locally even if revocation fails (e.g. already revoked)
+        console.error(
+          "Warning: could not revoke token on the server:",
+          e instanceof Error ? e.message : String(e)
+        );
+      }
+      await removeCredential(baseUrl);
+      console.error("✔ Logged out.");
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("whoami")
+  .description("Show the user or workspace the CLI is authenticated as")
+  .action(async () => {
+    try {
+      const credential = await resolveCredential();
+      if (!credential) {
+        console.error("Not logged in. Run magnet login.");
+        process.exit(1);
+      }
+      if (credential.kind === "orgApiKey") {
+        console.error(
+          "Authenticated with a workspace API key (MAGNET_API_KEY). Workspace keys have no user identity."
+        );
+        return;
+      }
+      const me = await fetchMe(credential);
+      jsonOut(me);
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+interface OrgSummary {
+  id: string;
+  name: string;
+  slug: string | null;
+}
+
+program
+  .command("link")
+  .alias("init")
+  .description("Link this directory to a Magnet workspace (creates .magnet/project.json)")
+  .option("--workspace <idOrSlug>", "Workspace id or slug (skips the picker)")
+  .option("--org <idOrSlug>", "Alias for --workspace")
+  .option("--yes", "Skip confirmation prompts (for CI)")
+  .action(async (opts: { workspace?: string; org?: string; yes?: boolean }) => {
+    try {
+      const cwd = process.cwd();
+      const requestedWorkspace = opts.workspace ?? opts.org;
+      const { api } = await requireUserClient();
+
+      const existing = await readProjectLink(cwd);
+      if (existing && !opts.yes) {
+        console.error(
+          `This directory is linked to ${existing.orgName || existing.orgId}` +
+            (existing.orgSlug ? ` (${existing.orgSlug})` : "") +
+            "."
+        );
+        if (!isInteractive()) {
+          console.error("Pass --yes to re-link.");
+          process.exit(1);
+        }
+        const relink = await promptConfirm("Re-link to a different workspace?");
+        if (!relink) return;
+      }
+
+      const { orgs } = await api.get<{ orgs: OrgSummary[] }>("/api/organizations");
+
+      let chosen: OrgSummary | null = null;
+      if (requestedWorkspace) {
+        chosen =
+          orgs.find((o) => o.id === requestedWorkspace || o.slug === requestedWorkspace) ?? null;
+        if (!chosen) {
+          console.error(`No workspace found matching "${requestedWorkspace}".`);
+          console.error(
+            "Available: " +
+              orgs.map((o) => o.slug ?? o.id).join(", ")
+          );
+          process.exit(1);
+        }
+      } else if (orgs.length === 1 && opts.yes) {
+        chosen = orgs[0];
+      } else {
+        if (!isInteractive()) {
+          console.error(
+            "Multiple workspaces available. Pass --workspace <idOrSlug> in non-interactive mode."
+          );
+          process.exit(1);
+        }
+        const labels = orgs.map(
+          (o) => `${o.name}${o.slug ? ` (${o.slug})` : ""}`
+        );
+        labels.push("+ Create a new workspace");
+        const idx = await promptSelect(
+          `Link ${basename(cwd)} to which workspace?`,
+          labels
+        );
+        if (idx === orgs.length) {
+          const name = await promptText("Name for the new workspace:");
+          if (!name) {
+            console.error("Workspace name is required.");
+            process.exit(1);
+          }
+          const created = await api.post<{
+            organization: OrgSummary;
+          }>("/api/organizations", { name });
+          chosen = created.organization;
+        } else {
+          chosen = orgs[idx];
+        }
+      }
+
+      if (!chosen) {
+        console.error("No workspace selected.");
+        process.exit(1);
+      }
+
+      const path = await writeProjectLink(cwd, {
+        orgId: chosen.id,
+        orgSlug: chosen.slug,
+        orgName: chosen.name,
+      });
+      const gitignoreUpdated = await ensureGitignoreHasMagnet(cwd);
+      console.error(
+        `✔ Linked ${basename(cwd)} to ${chosen.name}` +
+          (chosen.slug ? ` (${chosen.slug})` : "")
+      );
+      console.error(
+        `  Created ${path}` +
+          (gitignoreUpdated ? " (added .magnet to .gitignore)" : "")
+      );
+    } catch (e) {
+      handleError(e);
     }
   });
 
