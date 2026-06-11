@@ -808,4 +808,8 @@ program
     }
   });
 
-program.parse();
+// Commander only registers -V; accept the lowercase form people actually type.
+// Top-level only, so subcommands stay free to define their own -v.
+const argv = [...process.argv];
+if (argv[2] === "-v") argv[2] = "-V";
+program.parse(argv);
