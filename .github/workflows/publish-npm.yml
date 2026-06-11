@@ -1,0 +1,42 @@
+# Manual catch-up publish for tags that were released before npm publishing
+# existed (or when a publish step failed). Normal releases publish via release.yml.
+name: Publish npm (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish (e.g. v0.1.9)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify tag matches package.json version
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          TAG="${TAG_INPUT#v}"
+          if [ "$PKG" != "$TAG" ]; then
+            echo "package.json version ($PKG) does not match tag ($TAG_INPUT)" >&2
+            exit 1
+          fi
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

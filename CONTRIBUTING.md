@@ -55,16 +55,20 @@ unset MAGNET_API_KEY
 - **Push to `main`** or **open a PR** → runs `bun test` and `bun run build` (see [Actions](https://github.com/toolkit-ai/magnet-cli/actions)).
 - To test CI from a fork, push a branch and open a PR against `main`.
 
-### 5. Release workflow (build + GitHub Release)
+### 5. Release workflow (build + GitHub Release + npm)
 
-- **Push a version tag** to trigger the release workflow:
+- **Bump and tag in one step** (keeps `package.json` and the tag in lockstep — CI fails the npm publish if they differ):
 
   ```bash
-  git tag v0.1.0
-  git push origin v0.1.0
+  npm version patch        # bumps package.json, commits, creates the vX.Y.Z tag
+  git push origin main --follow-tags
   ```
 
-  This builds native binaries (Bun compile) for linux-amd64, darwin-arm64, and windows-amd64 and creates a GitHub Release with the artifacts.
+  This builds native binaries (Bun compile) for linux-amd64, linux-arm64, darwin-amd64, darwin-arm64, and windows-amd64, creates a GitHub Release with the artifacts, and publishes `@magnet-ai/cli` to npm (requires the `NPM_TOKEN` repository secret).
+
+  The binary's `--version` comes from `package.json` at compile time, so the bump is what versions the binaries.
+
+- To **publish an existing tag to npm** (e.g. after a failed publish step), run the "Publish npm (manual)" workflow from the Actions tab with the tag name.
 
 - To **test the release workflow without publishing** a real release: push a tag like `v0.0.0-test`, run the workflow, then delete the tag and the draft release from the repo.
 
