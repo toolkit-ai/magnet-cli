@@ -15,9 +15,10 @@ import {
   removeCredential,
   saveCredential,
 } from "./authStore";
-import { runDeviceFlow } from "./deviceFlow";
+import { runDeviceFlow, tryOpenBrowser } from "./deviceFlow";
 import {
   ensureGitignoreHasMagnet,
+  findProjectLink,
   readProjectLink,
   writeProjectLink,
 } from "./linkFile";
@@ -612,6 +613,59 @@ program
         `  Created ${path}` +
           (gitignoreUpdated ? " (added .magnet to .gitignore)" : "")
       );
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+// The desktop app registers magnet-ai:// (magnet-ai-dev:// for dev builds)
+const DESKTOP_PROTOCOL = process.env.MAGNET_DESKTOP_PROTOCOL ?? "magnet-ai";
+
+program
+  .command("open")
+  .description("Open the linked workspace on web or in the desktop app")
+  .option("--web", "Open on the web without asking")
+  .option("--desktop", "Open in the desktop app without asking")
+  .action(async (opts: { web?: boolean; desktop?: boolean }) => {
+    try {
+      const found = await findProjectLink(process.cwd());
+      if (!found) {
+        console.error("No project linked. Run magnet link to link this directory to a workspace.");
+        process.exit(1);
+      }
+      const { link } = found;
+      const label = link.orgName || link.orgSlug || link.orgId;
+
+      let target: "web" | "desktop";
+      if (opts.web && opts.desktop) {
+        console.error("Pass only one of --web or --desktop.");
+        process.exit(1);
+      } else if (opts.web) {
+        target = "web";
+      } else if (opts.desktop) {
+        target = "desktop";
+      } else {
+        if (!isInteractive()) {
+          console.error("Pass --web or --desktop in non-interactive mode.");
+          process.exit(1);
+        }
+        const idx = await promptSelect(`Open ${label} in:`, [
+          "Web browser",
+          "Desktop app",
+        ]);
+        target = idx === 0 ? "web" : "desktop";
+      }
+
+      const url =
+        target === "web"
+          ? `${getBaseUrl()}/cli/open?org=${encodeURIComponent(link.orgId)}`
+          : `${DESKTOP_PROTOCOL}://open-workspace?id=${encodeURIComponent(link.orgId)}`;
+
+      if (tryOpenBrowser(url)) {
+        console.error(`✔ Opening ${label} ${target === "web" ? "on the web" : "in the desktop app"}`);
+      } else {
+        console.error(`Open this URL to continue: ${url}`);
+      }
     } catch (e) {
       handleError(e);
     }

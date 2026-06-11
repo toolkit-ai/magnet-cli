@@ -14,7 +14,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function tryOpenBrowser(url: string): boolean {
+export function tryOpenBrowser(url: string): boolean {
   const commands: Record<string, [string, string[]]> = {
     darwin: ["open", [url]],
     linux: ["xdg-open", [url]],
