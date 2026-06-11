@@ -309,7 +309,7 @@ Prerequisites:
   For Cloudflare compatibility use: docker save --platform linux/amd64 -o image.tar <image:tag>
 
 Environment:
-  MAGNET_API_KEY  Required. Set to your Magnet API key (scoped to your organization).
+  MAGNET_API_KEY  Required. Set to your Magnet API key (scoped to your workspace).
   MAGNET_API_URL  Optional. Default: https://www.magnet.run (use http://localhost:3000 for local testing)
 
 Examples:
@@ -402,7 +402,7 @@ async function requireUserClient(): Promise<{
   if (!credential) {
     if (!isInteractive()) {
       console.error(
-        "Not logged in. Run magnet login, or set MAGNET_API_KEY for org-key access."
+        "Not logged in. Run magnet login, or set MAGNET_API_KEY for workspace-key access."
       );
       process.exit(1);
     }
@@ -492,7 +492,7 @@ program
 
 program
   .command("whoami")
-  .description("Show the user or org the CLI is authenticated as")
+  .description("Show the user or workspace the CLI is authenticated as")
   .action(async () => {
     try {
       const credential = await resolveCredential();
@@ -502,7 +502,7 @@ program
       }
       if (credential.kind === "orgApiKey") {
         console.error(
-          "Authenticated with an org API key (MAGNET_API_KEY). Org keys have no user identity."
+          "Authenticated with a workspace API key (MAGNET_API_KEY). Workspace keys have no user identity."
         );
         return;
       }
@@ -522,12 +522,14 @@ interface OrgSummary {
 program
   .command("link")
   .alias("init")
-  .description("Link this directory to a Magnet organization (creates .magnet/project.json)")
-  .option("--org <idOrSlug>", "Organization id or slug (skips the picker)")
+  .description("Link this directory to a Magnet workspace (creates .magnet/project.json)")
+  .option("--workspace <idOrSlug>", "Workspace id or slug (skips the picker)")
+  .option("--org <idOrSlug>", "Alias for --workspace")
   .option("--yes", "Skip confirmation prompts (for CI)")
-  .action(async (opts: { org?: string; yes?: boolean }) => {
+  .action(async (opts: { workspace?: string; org?: string; yes?: boolean }) => {
     try {
       const cwd = process.cwd();
+      const requestedWorkspace = opts.workspace ?? opts.org;
       const { api } = await requireUserClient();
 
       const existing = await readProjectLink(cwd);
@@ -541,18 +543,18 @@ program
           console.error("Pass --yes to re-link.");
           process.exit(1);
         }
-        const relink = await promptConfirm("Re-link to a different organization?");
+        const relink = await promptConfirm("Re-link to a different workspace?");
         if (!relink) return;
       }
 
       const { orgs } = await api.get<{ orgs: OrgSummary[] }>("/api/organizations");
 
       let chosen: OrgSummary | null = null;
-      if (opts.org) {
+      if (requestedWorkspace) {
         chosen =
-          orgs.find((o) => o.id === opts.org || o.slug === opts.org) ?? null;
+          orgs.find((o) => o.id === requestedWorkspace || o.slug === requestedWorkspace) ?? null;
         if (!chosen) {
-          console.error(`No organization found matching "${opts.org}".`);
+          console.error(`No workspace found matching "${requestedWorkspace}".`);
           console.error(
             "Available: " +
               orgs.map((o) => o.slug ?? o.id).join(", ")
@@ -564,22 +566,22 @@ program
       } else {
         if (!isInteractive()) {
           console.error(
-            "Multiple organizations available. Pass --org <idOrSlug> in non-interactive mode."
+            "Multiple workspaces available. Pass --workspace <idOrSlug> in non-interactive mode."
           );
           process.exit(1);
         }
         const labels = orgs.map(
           (o) => `${o.name}${o.slug ? ` (${o.slug})` : ""}`
         );
-        labels.push("+ Create a new organization");
+        labels.push("+ Create a new workspace");
         const idx = await promptSelect(
-          `Link ${basename(cwd)} to which organization?`,
+          `Link ${basename(cwd)} to which workspace?`,
           labels
         );
         if (idx === orgs.length) {
-          const name = await promptText("Name for the new organization:");
+          const name = await promptText("Name for the new workspace:");
           if (!name) {
-            console.error("Organization name is required.");
+            console.error("Workspace name is required.");
             process.exit(1);
           }
           const created = await api.post<{
@@ -592,7 +594,7 @@ program
       }
 
       if (!chosen) {
-        console.error("No organization selected.");
+        console.error("No workspace selected.");
         process.exit(1);
       }
 

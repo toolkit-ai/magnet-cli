@@ -12,12 +12,12 @@ const LINK_FILE = "project.json";
 const README_FILE = "README.txt";
 
 const README_CONTENT = `> Why do I have a folder named ".magnet" in my project?
-The ".magnet" folder is created when you link a directory to a Magnet organization.
+The ".magnet" folder is created when you link a directory to a Magnet workspace.
 
 > What does the "project.json" file contain?
 The "project.json" file contains:
-- The ID of the Magnet organization that you linked ("orgId")
-- The slug and name of that organization ("orgSlug", "orgName")
+- The ID of the Magnet workspace that you linked ("orgId")
+- The slug and name of that workspace ("orgSlug", "orgName")
 
 > Should I commit the ".magnet" folder?
 No, you should not share the ".magnet" folder with anyone.
