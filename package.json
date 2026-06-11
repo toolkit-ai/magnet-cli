@@ -1,6 +1,6 @@
 {
   "name": "@magnet-ai/cli",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Magnet CLI — issues, pages, search, and sandbox images. Download the native binary from GitHub Releases.",
   "type": "module",
   "bin": {
