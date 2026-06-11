@@ -64,7 +64,10 @@ import type {
   SandboxImageUploadStatusResponse,
 } from "./types";
 
-const VERSION = process.env.MAGNET_CLI_VERSION ?? "dev";
+// bun inlines JSON imports at compile time; env vars are read at runtime,
+// which made every compiled release binary report "dev"
+import pkg from "../package.json";
+const VERSION = `v${pkg.version}`;
 
 function jsonOut(obj: unknown) {
   console.log(JSON.stringify(obj, null, 2));
