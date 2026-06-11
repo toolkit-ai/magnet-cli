@@ -15,15 +15,30 @@ import {
   removeCredential,
   saveCredential,
 } from "./authStore";
-import { runDeviceFlow } from "./deviceFlow";
+import { runDeviceFlow, tryOpenBrowser } from "./deviceFlow";
+import {
+  RULES_TARGETS,
+  detectRulesTargets,
+  writeAgentRules,
+  type RulesTarget,
+} from "./agentRules";
+import type { ProjectLink } from "./linkFile";
+import {
+  detectManagedInstall,
+  fetchLatestTag,
+  isSameVersion,
+  selfUpdate,
+} from "./update";
 import {
   ensureGitignoreHasMagnet,
+  findProjectLink,
   readProjectLink,
   writeProjectLink,
 } from "./linkFile";
 import {
   isInteractive,
   promptConfirm,
+  promptMultiSelect,
   promptSelect,
   promptText,
 } from "./prompt";
@@ -526,7 +541,8 @@ program
   .option("--workspace <idOrSlug>", "Workspace id or slug (skips the picker)")
   .option("--org <idOrSlug>", "Alias for --workspace")
   .option("--yes", "Skip confirmation prompts (for CI)")
-  .action(async (opts: { workspace?: string; org?: string; yes?: boolean }) => {
+  .option("--rules", "Also write Claude Code and Cursor agent rules without asking")
+  .action(async (opts: { workspace?: string; org?: string; yes?: boolean; rules?: boolean }) => {
     try {
       const cwd = process.cwd();
       const requestedWorkspace = opts.workspace ?? opts.org;
@@ -612,7 +628,179 @@ program
         `  Created ${path}` +
           (gitignoreUpdated ? " (added .magnet to .gitignore)" : "")
       );
+
+      const setupRules =
+        opts.rules === true ||
+        (!opts.yes &&
+          isInteractive() &&
+          (await promptConfirm(
+            "Set up agent rules so coding agents (Claude Code, Cursor, Codex) know how to use Magnet?",
+            true
+          )));
+      if (setupRules) {
+        await chooseAndWriteRules(
+          cwd,
+          { orgId: chosen.id, orgSlug: chosen.slug, orgName: chosen.name },
+          {}
+        );
+      }
     } catch (e) {
+      handleError(e);
+    }
+  });
+
+/**
+ * Resolve which tools get rules: explicit flags win; otherwise detected tools
+ * (all three when nothing is detected), confirmed interactively when possible.
+ */
+async function chooseAndWriteRules(
+  dir: string,
+  link: ProjectLink,
+  flags: { claude?: boolean; cursor?: boolean; codex?: boolean }
+): Promise<void> {
+  const flagged = RULES_TARGETS.map((r) => r.target).filter((t) => flags[t] === true);
+
+  let targets: RulesTarget[];
+  if (flagged.length > 0) {
+    targets = flagged;
+  } else {
+    const detected = await detectRulesTargets(dir);
+    const defaults = detected.length > 0 ? detected : RULES_TARGETS.map((r) => r.target);
+    if (isInteractive()) {
+      const labels = RULES_TARGETS.map(
+        (r) => r.label + (detected.includes(r.target) ? " — detected" : "")
+      );
+      const preselected = defaults.map((t) =>
+        RULES_TARGETS.findIndex((r) => r.target === t)
+      );
+      const chosen = await promptMultiSelect("Which tools should get Magnet rules?", labels, preselected);
+      targets = chosen.map((i) => RULES_TARGETS[i].target);
+    } else {
+      targets = defaults;
+    }
+  }
+
+  if (targets.length === 0) {
+    console.error("No tools selected; skipping agent rules.");
+    return;
+  }
+  const written = await writeAgentRules(dir, link, targets);
+  console.error(`✔ Wrote agent rules to:`);
+  for (const path of written) {
+    console.error(`    ${path}`);
+  }
+  console.error("  Commit these so your whole team's agents pick them up.");
+  console.error("  Re-run magnet rules anytime to refresh them after CLI updates.");
+}
+
+program
+  .command("rules")
+  .description(
+    "Write agent rules that teach coding agents to use the magnet CLI (requires a linked project)"
+  )
+  .option("--claude", "Write CLAUDE.md rules (Claude Code)")
+  .option("--cursor", "Write .cursor/rules/magnet.mdc (Cursor)")
+  .option("--codex", "Write AGENTS.md rules (Codex and other AGENTS.md tools)")
+  .action(async (opts: { claude?: boolean; cursor?: boolean; codex?: boolean }) => {
+    try {
+      const found = await findProjectLink(process.cwd());
+      if (!found) {
+        console.error("No project linked. Run magnet link to link this directory to a workspace.");
+        process.exit(1);
+      }
+      await chooseAndWriteRules(found.dir, found.link, opts);
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+// The desktop app registers magnet-ai:// (magnet-ai-dev:// for dev builds)
+const DESKTOP_PROTOCOL = process.env.MAGNET_DESKTOP_PROTOCOL ?? "magnet-ai";
+
+program
+  .command("open")
+  .description("Open the linked workspace on web or in the desktop app")
+  .option("--web", "Open on the web without asking")
+  .option("--desktop", "Open in the desktop app without asking")
+  .action(async (opts: { web?: boolean; desktop?: boolean }) => {
+    try {
+      const found = await findProjectLink(process.cwd());
+      if (!found) {
+        console.error("No project linked. Run magnet link to link this directory to a workspace.");
+        process.exit(1);
+      }
+      const { link } = found;
+      const label = link.orgName || link.orgSlug || link.orgId;
+
+      let target: "web" | "desktop";
+      if (opts.web && opts.desktop) {
+        console.error("Pass only one of --web or --desktop.");
+        process.exit(1);
+      } else if (opts.web) {
+        target = "web";
+      } else if (opts.desktop) {
+        target = "desktop";
+      } else {
+        if (!isInteractive()) {
+          console.error("Pass --web or --desktop in non-interactive mode.");
+          process.exit(1);
+        }
+        const idx = await promptSelect(`Open ${label} in:`, [
+          "Web browser",
+          "Desktop app",
+        ]);
+        target = idx === 0 ? "web" : "desktop";
+      }
+
+      const url =
+        target === "web"
+          ? `${getBaseUrl()}/cli/open?org=${encodeURIComponent(link.orgId)}`
+          : `${DESKTOP_PROTOCOL}://open-workspace?id=${encodeURIComponent(link.orgId)}`;
+
+      if (tryOpenBrowser(url)) {
+        console.error(`✔ Opening ${label} ${target === "web" ? "on the web" : "in the desktop app"}`);
+      } else {
+        console.error(`Open this URL to continue: ${url}`);
+      }
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("update")
+  .description("Update the magnet CLI to the latest release")
+  .option("--check", "Only check whether a newer version is available")
+  .action(async (opts: { check?: boolean }) => {
+    try {
+      const latestTag = await fetchLatestTag();
+
+      if (VERSION !== "dev" && isSameVersion(VERSION, latestTag)) {
+        console.error(`magnet is up to date (${latestTag})`);
+        return;
+      }
+      console.error(`Update available: ${VERSION} -> ${latestTag}`);
+      if (opts.check) return;
+
+      if (VERSION === "dev") {
+        console.error("This is a dev build; not overwriting it. Install a release build first.");
+        process.exit(1);
+      }
+
+      const managed = detectManagedInstall(process.execPath);
+      if (managed) {
+        console.error(`This install is managed by ${managed.manager}. Update it with:`);
+        console.error(`  ${managed.command}`);
+        process.exit(1);
+      }
+
+      await selfUpdate(latestTag, process.execPath);
+      console.error(`✔ Updated magnet to ${latestTag}`);
+    } catch (e) {
+      if (e instanceof Error && "code" in e && (e as NodeJS.ErrnoException).code === "EACCES") {
+        console.error(`Permission denied writing ${process.execPath}. Try: sudo magnet update`);
+        process.exit(1);
+      }
       handleError(e);
     }
   });

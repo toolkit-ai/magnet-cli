@@ -20,6 +20,12 @@ jobs:
           - runs-on: macos-latest
             artifact: magnet-cli-darwin-arm64.tar.gz
             suffix: ""
+          - runs-on: macos-15-intel
+            artifact: magnet-cli-darwin-amd64.tar.gz
+            suffix: ""
+          - runs-on: ubuntu-24.04-arm
+            artifact: magnet-cli-linux-arm64.tar.gz
+            suffix: ""
           - runs-on: windows-latest
             artifact: magnet-cli-windows-amd64.tar.gz
             suffix: ".exe"
