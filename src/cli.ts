@@ -16,7 +16,13 @@ import {
   saveCredential,
 } from "./authStore";
 import { runDeviceFlow, tryOpenBrowser } from "./deviceFlow";
-import { writeAgentRules } from "./agentRules";
+import {
+  RULES_TARGETS,
+  detectRulesTargets,
+  writeAgentRules,
+  type RulesTarget,
+} from "./agentRules";
+import type { ProjectLink } from "./linkFile";
 import {
   ensureGitignoreHasMagnet,
   findProjectLink,
@@ -26,6 +32,7 @@ import {
 import {
   isInteractive,
   promptConfirm,
+  promptMultiSelect,
   promptSelect,
   promptText,
 } from "./prompt";
@@ -621,37 +628,81 @@ program
         (!opts.yes &&
           isInteractive() &&
           (await promptConfirm(
-            "Set up agent rules so Claude Code and Cursor know how to use Magnet?"
+            "Set up agent rules so coding agents (Claude Code, Cursor, Codex) know how to use Magnet?",
+            true
           )));
       if (setupRules) {
-        const written = await writeAgentRules(cwd, {
-          orgId: chosen.id,
-          orgSlug: chosen.slug,
-          orgName: chosen.name,
-        });
-        console.error(`✔ Wrote agent rules to ${written.claudePath} and ${written.cursorPath}`);
-        console.error("  Commit these so your whole team's agents pick them up.");
+        await chooseAndWriteRules(
+          cwd,
+          { orgId: chosen.id, orgSlug: chosen.slug, orgName: chosen.name },
+          {}
+        );
       }
     } catch (e) {
       handleError(e);
     }
   });
 
+/**
+ * Resolve which tools get rules: explicit flags win; otherwise detected tools
+ * (all three when nothing is detected), confirmed interactively when possible.
+ */
+async function chooseAndWriteRules(
+  dir: string,
+  link: ProjectLink,
+  flags: { claude?: boolean; cursor?: boolean; codex?: boolean }
+): Promise<void> {
+  const flagged = RULES_TARGETS.map((r) => r.target).filter((t) => flags[t] === true);
+
+  let targets: RulesTarget[];
+  if (flagged.length > 0) {
+    targets = flagged;
+  } else {
+    const detected = await detectRulesTargets(dir);
+    const defaults = detected.length > 0 ? detected : RULES_TARGETS.map((r) => r.target);
+    if (isInteractive()) {
+      const labels = RULES_TARGETS.map(
+        (r) => r.label + (detected.includes(r.target) ? " — detected" : "")
+      );
+      const preselected = defaults.map((t) =>
+        RULES_TARGETS.findIndex((r) => r.target === t)
+      );
+      const chosen = await promptMultiSelect("Which tools should get Magnet rules?", labels, preselected);
+      targets = chosen.map((i) => RULES_TARGETS[i].target);
+    } else {
+      targets = defaults;
+    }
+  }
+
+  if (targets.length === 0) {
+    console.error("No tools selected; skipping agent rules.");
+    return;
+  }
+  const written = await writeAgentRules(dir, link, targets);
+  console.error(`✔ Wrote agent rules to:`);
+  for (const path of written) {
+    console.error(`    ${path}`);
+  }
+  console.error("  Commit these so your whole team's agents pick them up.");
+  console.error("  Re-run magnet rules anytime to refresh them after CLI updates.");
+}
+
 program
   .command("rules")
   .description(
-    "Write Claude Code and Cursor rules that teach agents to use the magnet CLI (requires a linked project)"
+    "Write agent rules that teach coding agents to use the magnet CLI (requires a linked project)"
   )
-  .action(async () => {
+  .option("--claude", "Write CLAUDE.md rules (Claude Code)")
+  .option("--cursor", "Write .cursor/rules/magnet.mdc (Cursor)")
+  .option("--codex", "Write AGENTS.md rules (Codex and other AGENTS.md tools)")
+  .action(async (opts: { claude?: boolean; cursor?: boolean; codex?: boolean }) => {
     try {
       const found = await findProjectLink(process.cwd());
       if (!found) {
         console.error("No project linked. Run magnet link to link this directory to a workspace.");
         process.exit(1);
       }
-      const written = await writeAgentRules(found.dir, found.link);
-      console.error(`✔ Wrote agent rules to ${written.claudePath} and ${written.cursorPath}`);
-      console.error("  Re-run magnet rules anytime to refresh them after CLI updates.");
+      await chooseAndWriteRules(found.dir, found.link, opts);
     } catch (e) {
       handleError(e);
     }

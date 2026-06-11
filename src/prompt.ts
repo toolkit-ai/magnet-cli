@@ -26,6 +26,38 @@ export async function promptConfirm(
   return /^y(es)?$/i.test(answer);
 }
 
+/**
+ * Numbered-list multi-selection; returns the chosen indices.
+ * Empty input accepts the preselected defaults.
+ */
+export async function promptMultiSelect(
+  question: string,
+  choices: string[],
+  preselected: number[]
+): Promise<number[]> {
+  console.error(`\n${question}`);
+  choices.forEach((choice, i) => {
+    const mark = preselected.includes(i) ? "x" : " ";
+    console.error(`  ${i + 1}. [${mark}] ${choice}`);
+  });
+  for (;;) {
+    const answer = await promptText(
+      `Enter numbers separated by commas, "a" for all, or press Enter for the defaults:`
+    );
+    if (!answer) return preselected;
+    if (/^a(ll)?$/i.test(answer)) return choices.map((_, i) => i);
+    const parts = answer.split(/[\s,]+/).filter(Boolean);
+    const indices = parts.map((p) => Number.parseInt(p, 10) - 1);
+    if (
+      indices.length > 0 &&
+      indices.every((i) => Number.isInteger(i) && i >= 0 && i < choices.length)
+    ) {
+      return [...new Set(indices)].sort();
+    }
+    console.error(`Please enter numbers between 1 and ${choices.length}, separated by commas.`);
+  }
+}
+
 /** Numbered-list selection; returns the chosen index. */
 export async function promptSelect(
   question: string,

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "fs/promises";
+import { access, mkdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import type { ProjectLink } from "./linkFile";
 
@@ -7,6 +7,33 @@ const END_MARKER = "<!-- END MAGNET RULES -->";
 
 const CLAUDE_FILE = "CLAUDE.md";
 const CURSOR_RULES_FILE = join(".cursor", "rules", "magnet.mdc");
+const CODEX_FILE = "AGENTS.md";
+
+export type RulesTarget = "claude" | "cursor" | "codex";
+
+export const RULES_TARGETS: { target: RulesTarget; label: string }[] = [
+  { target: "claude", label: "Claude Code (CLAUDE.md)" },
+  { target: "cursor", label: "Cursor (.cursor/rules/magnet.mdc)" },
+  { target: "codex", label: "Codex + other AGENTS.md tools (AGENTS.md)" },
+];
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/** Tools already in use in this repo, judged by their config files. */
+export async function detectRulesTargets(dir: string): Promise<RulesTarget[]> {
+  const detected: RulesTarget[] = [];
+  if (await exists(join(dir, CLAUDE_FILE))) detected.push("claude");
+  if (await exists(join(dir, ".cursor"))) detected.push("cursor");
+  if (await exists(join(dir, CODEX_FILE))) detected.push("codex");
+  return detected;
+}
 
 export function buildRulesContent(link: ProjectLink): string {
   const workspaceLabel = link.orgSlug
@@ -86,24 +113,32 @@ export function upsertMarkedBlock(existing: string, block: string): string {
   return existing + separator + block + "\n";
 }
 
-export interface AgentRulesResult {
-  claudePath: string;
-  cursorPath: string;
-}
-
+/** Returns the paths written, one per requested target. */
 export async function writeAgentRules(
   dir: string,
-  link: ProjectLink
-): Promise<AgentRulesResult> {
+  link: ProjectLink,
+  targets: RulesTarget[]
+): Promise<string[]> {
   const content = buildRulesContent(link);
+  const written: string[] = [];
 
-  const claudePath = join(dir, CLAUDE_FILE);
-  const existing = await readFileOrEmpty(claudePath);
-  await writeFile(claudePath, upsertMarkedBlock(existing, claudeBlock(content)));
+  for (const markedFile of [
+    { target: "claude" as const, file: CLAUDE_FILE },
+    { target: "codex" as const, file: CODEX_FILE },
+  ]) {
+    if (!targets.includes(markedFile.target)) continue;
+    const path = join(dir, markedFile.file);
+    const existing = await readFileOrEmpty(path);
+    await writeFile(path, upsertMarkedBlock(existing, claudeBlock(content)));
+    written.push(path);
+  }
 
-  const cursorPath = join(dir, CURSOR_RULES_FILE);
-  await mkdir(join(dir, ".cursor", "rules"), { recursive: true });
-  await writeFile(cursorPath, cursorRulesFileContent(content));
+  if (targets.includes("cursor")) {
+    const cursorPath = join(dir, CURSOR_RULES_FILE);
+    await mkdir(join(dir, ".cursor", "rules"), { recursive: true });
+    await writeFile(cursorPath, cursorRulesFileContent(content));
+    written.push(cursorPath);
+  }
 
-  return { claudePath, cursorPath };
+  return written;
 }
