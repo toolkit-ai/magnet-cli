@@ -24,6 +24,12 @@ import {
 } from "./agentRules";
 import type { ProjectLink } from "./linkFile";
 import {
+  detectManagedInstall,
+  fetchLatestTag,
+  isSameVersion,
+  selfUpdate,
+} from "./update";
+import {
   ensureGitignoreHasMagnet,
   findProjectLink,
   readProjectLink,
@@ -757,6 +763,44 @@ program
         console.error(`Open this URL to continue: ${url}`);
       }
     } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("update")
+  .description("Update the magnet CLI to the latest release")
+  .option("--check", "Only check whether a newer version is available")
+  .action(async (opts: { check?: boolean }) => {
+    try {
+      const latestTag = await fetchLatestTag();
+
+      if (VERSION !== "dev" && isSameVersion(VERSION, latestTag)) {
+        console.error(`magnet is up to date (${latestTag})`);
+        return;
+      }
+      console.error(`Update available: ${VERSION} -> ${latestTag}`);
+      if (opts.check) return;
+
+      if (VERSION === "dev") {
+        console.error("This is a dev build; not overwriting it. Install a release build first.");
+        process.exit(1);
+      }
+
+      const managed = detectManagedInstall(process.execPath);
+      if (managed) {
+        console.error(`This install is managed by ${managed.manager}. Update it with:`);
+        console.error(`  ${managed.command}`);
+        process.exit(1);
+      }
+
+      await selfUpdate(latestTag, process.execPath);
+      console.error(`✔ Updated magnet to ${latestTag}`);
+    } catch (e) {
+      if (e instanceof Error && "code" in e && (e as NodeJS.ErrnoException).code === "EACCES") {
+        console.error(`Permission denied writing ${process.execPath}. Try: sudo magnet update`);
+        process.exit(1);
+      }
       handleError(e);
     }
   });
